@@ -110,11 +110,16 @@ def build(config_file = None, output_file = None, options = None):
             )
         elif use_compressor == "closure_verify":
             print "\nPre-compilation process..."
-            sourceFilesTmp = []
             preProcessDirectory = "../build/temp"
+            try:
+                shutil.rmtree(preProcessDirectory, False)
+                os.makedirs(preProcessDirectory)
+            except Exception, E:
+                print "\nAbnormal termination: Unable to clear working folder \"%s\"," % preProcessDirectory
+                print "                      check if there is a process that blocks the folder."
+                sys.exit("ERROR: %s" % E) 
             fAux = preProcessDirectory + "/temp.js"
-            shutil.rmtree(preProcessDirectory, True)
-            os.makedirs(preProcessDirectory)
+            sourceFilesTmp = []
             for fIn in sourceFiles:
                 fOut = os.path.normpath(os.path.join(preProcessDirectory, fIn.replace("../",""))).replace("\\","/")
                 NaturalDocs2JsDoc.cnvJsDoc(fIn, fAux)
