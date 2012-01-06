@@ -25,6 +25,10 @@ The options available for compression are:
    Then unzipping that file, and placing compiler.jar into tools
    and renaming it closure-compiler.jar.
 
+ * closure_verify
+   Use also closure-compiler.jar but is designed only to verify that 
+   the code will not use properties or methods undefined in classes or objects. 
+
  * closure_ws
    This uses the closure compiler webservice. This will only work
    for files source Javascript files which are under 1MB. (Note that

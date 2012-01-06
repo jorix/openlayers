@@ -136,6 +136,13 @@ def build(config_file = None, output_file = None, options = None):
                     "--jscomp_error",   "undefinedVars"
                 ]
             )
+            if minimized:
+                outputFilename = os.path.normpath(os.path.join(preProcessDirectory, os.path.basename(outputFilename))).replace("\\","/")
+                print "\nWARNINGS:"
+                print "  * \"closure_verify\" is designed only to verify the code."
+                print "  * Don't use the resulting compressed code, the code works"
+                print "    but have not been tested at all circumstances."
+                print "  * Has forced create the output file to a temporary folder as \"%s\"\n" % outputFilename
         if minimized is None:
             print "\nAbnormal termination due to compilation errors." 
             sys.exit("ERROR: Closure Compilation failed! See compilation errors.") 
