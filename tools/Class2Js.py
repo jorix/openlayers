@@ -12,6 +12,10 @@ M_COM1_BLOC = 1
 M_COM2_BLOC = 2
 
 reJsClass = re.compile(r"^ *(OpenLayers[\.\w]+) *\= *OpenLayers\.Class\(([\w ,\.]*)(\{?)(.*)")
+reJsClass1 = re.compile(r"^ *(OpenLayers[\.\w]+) *\= *$")
+reJsClass2 = re.compile(r"^ *OpenLayers\.Class\(([\w ,\.]*)(\{?)(.*)")
+
+
 reJsClassStart = re.compile(r"^([\w ,\.]*)(\{?)(.*)")
 reJsClassEnd = re.compile(r"^\}\); *$")
 
@@ -51,6 +55,7 @@ def cnvJs(inputFilename, outputFilename):
     classPhase = 0 # 0=No, 1=inherits, 2=body
     className = ""
     classBeguin = ""
+    classLeft = False
     for line in fIn:
         lineNumber += 1
         startCom = -1
@@ -67,20 +72,40 @@ def cnvJs(inputFilename, outputFilename):
                     mode = M_COM1_BLOC
                     
             ooClass = reJsClass.search(line)
+            
             if classPhase == 0:
                 if ooClass:
-                    line = (
-                        #"/** @constructor */ " + 
-                        ooClass.group(1) + " = function() { " + 
-                        ooClass.group(1) + ".prototype.initialize.apply(this,arguments); };" + 
-                        ooClass.group(1) + ".prototype = {\n")
+                    classLeft = False
                     className = ooClass.group(1)
+                    line = (
+                        className + " = function() { " + 
+                        className + ".prototype.initialize.apply(this,arguments); };" + 
+                        className + ".prototype = {\n")
                     inherits = ooClass.group(2)
                     if ooClass.group(3) == "{":
                         classBeguin = ooClass.group(4)
                         classPhase = 2 # body
                     else:
                         classPhase = 1 # inherits
+                else:
+                    oo = reJsClass1.search(line)
+                    if oo:
+                        # Wait to next line
+                        classLeft = True
+                        className = oo.group(1)
+                    elif classLeft:
+                        classLeft = False
+                        oo = reJsClass2.search(line)
+                        line = (
+                            "    function() { " + 
+                            className + ".prototype.initialize.apply(this,arguments); };" + 
+                            className + ".prototype = {\n")
+                        inherits = oo.group(1)
+                        if oo.group(2) == "{":
+                            classBeguin = oo.group(3)
+                            classPhase = 2 # body
+                        else:
+                            classPhase = 1 # inherits
             elif classPhase == 1:
                 if ooClass:
                     print "\nAbnormal termination due to errors."
