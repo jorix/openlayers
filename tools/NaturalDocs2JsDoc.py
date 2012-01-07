@@ -22,7 +22,7 @@ syntax ={
     },
     "extends": {
         "keywords": ["Inherits from: *$", "Inerits from: *$", "Inherits: *$"],
-        "lineConv": "lineSuperClass",
+        "lineConv": "itemSuperClass",
         #"maxLines": 1, # Closure Compiler does not understand the multiple-inheritance.
         "prefixLine": "@extends"
     },    
@@ -33,7 +33,7 @@ syntax ={
     "const": {
         "keywords": ["Constant:"],
         "prefixKeyword": "@const",
-        "lineConv": "lineSingleDecl",
+        "lineConv": "itemUnnamed",
         "prefixLine": "@type"
     },    
     # "namespace": {
@@ -42,7 +42,7 @@ syntax ={
     # },
     "var": {
         "keywords": ["Property:", "APIProperty:"],
-        "lineConv": "lineSingleDecl",
+        "lineConv": "itemUnnamed",
         "prefixLine": "@type",
         "maxLines": 1, # forced end of block
         "maxKeywords": 1  ## TODO: 
@@ -56,18 +56,18 @@ syntax ={
     },
     "params": {
         "keywords": ["Parameters: *$", "Parameter: *$"],
-        "lineConv": "lineParam",
+        "lineConv": "itemNamed",
         "prefixLine": "@param"
     },
     "optionalParams": { # New block: To debate
         "keywords": ["Optional Parameters: *$", "Optional Parameter: *$"],
-        "lineConv": "lineOptParam",
+        "lineConv": "itemOptionalNamed",
         "prefixLine": "@param"
     },
     "optionsParam": { # Any "options" argument is forced to set optional.
         "keywords": ["options - {Object}"],
         "prefixKeyword": "@param {Object=} options",
-        "lineConv" : "lineOptParam", # Causes compiler warnings that allows 
+        "lineConv" : "itemOptionalNamed", # Causes compiler warnings that allows 
         "prefixLine": "@param"       #    better verification of documentation.
                                      #    See below "optionsProperties"
     },
@@ -86,13 +86,13 @@ syntax ={
             "Valid options properties: *$"]
     },
     "scope": { # New block: To debate
-        "keywords": ["Scope: *$"],
-        "lineConv": "lineSingleDecl",
+        "keywords": ["Context: *$"],
+        "lineConv": "itemUnnamed",
         "prefixLine": "@this"
     },
     "return": {
         "keywords": ["Returns: *$", "Return: *$"],
-        "lineConv": "lineSingleDecl",
+        "lineConv": "itemUnnamed",
         "maxLines": 1, # forced end of block
         "prefixLine": "@return"
     }
@@ -129,6 +129,12 @@ reLineCom2 =            re.compile(r"^ *\* *(?! )")
 reEndComBloc =          re.compile(r"\*\/")
 reEndLine =             re.compile(r"\n")
 reProblematicEndLine =  re.compile(r"\\\n")
+
+reItemsBlockStart = re.compile(r".+\: *$")
+reItemNamed =       re.compile(r"(\w+) - (.+)$")
+reItemUnnamed =     re.compile(r"(- |)(.+)$")
+reItemSuperClass =  re.compile(r"- \<([\.\w]+)\> *$")
+reTypeName =        re.compile(r"(Array\(|)\{(.+?)\}\)*(.*)$")
 
 def cnvJsDoc (inputFilename, outputFilename):
     print "Translating into jsDoc, input: %s output: %s " % (inputFilename, outputFilename),
@@ -249,18 +255,21 @@ class Com2:
             break
         else:
             if self.currentModeBlock and self.currentModeBlock.get("lineConv"):
-                conv = self.currentModeBlock.get("lineConv")
-                if conv == "lineParam":
-                    line = self.cnvLineParam(line, "", "")
-                elif conv == "lineOptParam":
-                    line = self.cnvLineParam(line, "", "|null|undefined=")
-                elif conv == "lineSingleDecl":
-                    line = self.cnvLineSingleDecl(line)
-                elif conv == "lineSuperClass":
-                    line = self.cnvLineSuperClass(line)
+                if reItemsBlockStart.search(line):
+                    self.clearKeyword() # forced end of previus block
+                else:
+                    conv = self.currentModeBlock.get("lineConv")
+                    if conv == "itemNamed":
+                        line = self.cnvItemNamed(line, "", "")
+                    elif conv == "itemOptionalNamed":
+                        line = self.cnvItemNamed(line, "", "|null|undefined=")
+                    elif conv == "itemUnnamed":
+                        line = self.cnvItemUnnamed(line)
+                    elif conv == "itemSuperClass":
+                        line = self.cnvItemSuperClass(line)
 
-                if self.maxLines <= self.processedLines:
-                    self.clearKeyword() # forced end of block
+                    if self.maxLines <= self.processedLines:
+                        self.clearKeyword() # forced end of block
         return line
 
     # Keyword line converters
@@ -269,66 +278,67 @@ class Com2:
         if len(words) < 2:
             return subLine
 
-        decl = self.cnvChkDeclaration(words[1])
+        decl = self.cnvTypeDeclaration(words[1])
         if decl == None:
             return subLine
 
-        return ( words[0] + " {" + decl[0] + "} " + " " + decl[1])
+        return (words[0] + 
+                " {" + decl["typeName"] + "} " + 
+                decl["remainder"])
 
     # Line converters
-    def cnvLineSuperClass(self, subLine):
-        superClass = subLine.replace("- <", 
-            self.currentModeBlock.get("prefixLine") + " {")
-        if subLine == superClass:
+    def cnvItemSuperClass(self, subLine):
+        oo = reItemSuperClass.search(subLine)
+        if oo == None:
             return subLine
+        return (self.currentModeBlock.get("prefixLine") +
+                " {" + oo.group(1) + "}")
 
-        self.processedLines += 1
-        superClass = superClass.replace(">","}")
-        return superClass
-
-    def cnvLineParam(self, subLine, start, end):
-        words = subLine.split(None,2)
-        if len(words) < 3:
+    def cnvItemNamed(self, subLine, start, end):
+        oo = reItemNamed.search(subLine.replace("} or {","|"))
+        if oo == None:
             return subLine
-
-        if words[1] != "-":
-            return subLine
-
-        decl = self.cnvChkDeclaration(words[2])
+        decl = self.cnvTypeDeclaration(oo.group(2))
         if decl == None:
             return subLine
 
         self.processedLines += 1
         return (self.currentModeBlock.get("prefixLine") +
-            " {" + start + decl[0] + end + "} " +
-            words[0] + " "+ decl[1])
+                " {" + start + decl["typeName"] + end + "} " +
+                oo.group(1) + " " + 
+                decl["remainder"])
 
-    def cnvLineSingleDecl(self, subLine):
-        decl = self.cnvChkDeclaration(subLine)
+    def cnvItemUnnamed(self, subLine):
+        oo = reItemUnnamed.search(subLine)
+        if oo == None:
+            return subLine
+        decl = self.cnvTypeDeclaration(subLine)
         if decl == None:
             return subLine
 
         self.processedLines += 1
-        return self.currentModeBlock.get("prefixLine") + " {" + decl[0] + "} " + decl[1]
+        return (self.currentModeBlock.get("prefixLine") + 
+                " {" + decl["typeName"] + "} " + 
+                decl["remainder"])
 
     # Type converter
-    def cnvChkDeclaration(self, subLine):
-        if subLine[0:1] != "{":
+    def cnvTypeDeclaration(self, subLine):
+        oo = reTypeName.search(subLine)
+        if oo:
+            if oo.group(1):
+                return {"typeName":  self.cnvTypeList("Array(" + oo.group(2) + ")"), 
+                        "remainder": oo.group(3)}
+            else:
+                return {"typeName": self.cnvTypeList(oo.group(2)), 
+                        "remainder": oo.group(3)}
+        else:
             return None
-
-        declEnd = re.search(r"\}(\s|\n|$)", subLine)
-        if not declEnd:
-            return None
-
-        return [self.cnvTypeList(subLine[1:declEnd.start()]), 
-                subLine[declEnd.start()+1:]] 
 
     def cnvTypeList(self, typeList):
         repetitiveParameter = ""
         if typeList[-4:] == " ...":
             typeList = typeList[:-4]
             repetitiveParameter = "..."
-        
         return repetitiveParameter + self.cnvTypeName(typeList)
 
     def cnvTypeName(self, typeName):
@@ -343,14 +353,12 @@ class Com2:
                     typeName = re.sub(p,r,typeName)
                     typeName = typeName.replace(spl[1], self.cnvTypeName(spl[1]))
                     typeName = typeName.replace(spl[2], self.cnvTypeName(spl[2]))
-                    # print "/2:",typeName
                     return self.cnvTypeNameSplit(typeName)
             elif r.find(r"\1") > 0:
                 spl = re.split(p,typeName)
                 if len(spl) >= 3 and spl[1] != "":
                     typeName = re.sub(p,r,typeName)
                     typeName = typeName.replace(spl[1], self.cnvTypeName(spl[1]))
-                    # print "/1:",typeName
                     return self.cnvTypeNameSplit(typeName)
             else:
                 if typeName.lower() == p.lower():
@@ -359,7 +367,6 @@ class Com2:
         return self.cnvTypeNameSplit(typeName)
 
     def cnvTypeNameSplit(self, typeName):
-        # print "or:",typeName
         typeName = typeName.replace(" or ","|")
         typeName = typeName.replace("||","|") # Used in Event.js
         typeName = typeName.replace(" ","")
@@ -367,10 +374,8 @@ class Com2:
         if len(types) > 1:
             for i in range(len(types)):
                 types[i] = self.cnvTypeName(self.cnvTypeNameClear(types[i]))
-            # print types
             return "|".join(types)
         else:
-            # print typeName
             return self.cnvTypeNameClear(typeName)
 
     def cnvTypeNameClear(self, typeAux):
@@ -384,4 +389,4 @@ class Com2:
 # main
 # -----------------
 if __name__ == '__main__':
-    cnv4JsDoc(sys.argv[1],sys.argv[2])
+    cnvJsDoc(sys.argv[1], sys.argv[2])
