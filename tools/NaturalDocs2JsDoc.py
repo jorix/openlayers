@@ -3,98 +3,104 @@
 import re
 import os
 import sys
+import logging
 
 # -----------------
 # Sintax: OpenLayers Natural Docs --> Closure Compiler jsDoc 
 # -----------------
 
-# Translate comment blocks
+# Translate annotations blocks
 syntax ={
-    "public": { # No effect: should be studied
-        "keywords": ["APIFunction:", "APIMethod:"]
+# Header Blocks
+    "@constructor": {
+        "keywords": ["Class:"], # "Constructor:"
+        "prefixBlockKeyword": "@constructor",
+        "blocks": ["inherits","params","params-optional"],
+        "ignores": ["returns"],
+        "chks": ["isStartLine"]
     },
-    "private": { # No effect: should be studied
-        "keywords": ["Function:", "Method:"]
+    "method": { # No effect: should be studied
+        "keywords": ["Method:", "APIMethod:"],
+        "blocks": ["params","params-optional","context","returns"],
+        "chks": ["isStartLine"]
     },
+    "function": { # No effect: should be studied
+        "keywords": ["Function:", "APIFunction:"],
+        "blocks": ["params","params-optional","context","returns"],
+        "requires": ["returns"],
+        "chks": ["isStartLine"]
+    },    
+    "initialize": { # No effect: should be studied
+        "keywords": ["Constructor:"],
+        "blocks": ["params","params-optional",],
+        "ignores": ["returns"],
+        "chks": ["isStartLine"]
+    },
+    "constant": {
+        "keywords": ["Constant:"],
+        "prefixBlockKeyword": "@const",
+        "chks": ["isStartLine"]
+    },
+    "property": {
+        "keywords": ["Property:", "APIProperty:"],
+        "ignores": ["params"], # See OpenLayers.Control.DragFeature::onDrag
+        "lines": {
+            "lineConv": "itemUnnamed",
+            "prefixLine": "@type",
+            "maxLines": 1, # forced end of block
+        },
+        "chks": ["isStartLine"]
+    },
+# Blocks
     "jsDoc": { # See Format/WKT.js:260-349
         "keywords": ["@param ", "@return ", "@returns "],
-        "keywordLineCnv": "cnvKeywordJsDoc"
+        "blockConv": "cnvKeywordJsDoc"
     },
-    "extends": {
+    "inherits": {
         "keywords": ["Inherits from: *$", "Inerits from: *$", "Inherits: *$"],
-        "lineConv": "itemSuperClass",
-        #"maxLines": 1, # Closure Compiler does not understand the multiple-inheritance.
-        "prefixLine": "@extends"
+        "lines": {
+            "prefixLine": "@extends",
+            "lineConv": "itemSuperClass",
+            "minLines": 1
+            #"maxLines": 1, # Closure Compiler does not understand the multiple-inheritance.
+        },
+        "chks": ["prevBlank", "requiresHeader"]
     },    
-    "constructor": {
-        "keywords": ["Class:"], # "Constructor:"
-        "prefixKeyword": "@constructor"
-    },
-    "const": {
-        "keywords": ["Constant:"],
-        "prefixKeyword": "@const",
-        "lineConv": "itemUnnamed",
-        "prefixLine": "@type"
-    },    
-    # "namespace": {
-        # "keywords": ["Namespace:"],
-        # "prefixKeyword": "@type {Object}"
-    # },
-    "var": {
-        "keywords": ["Property:", "APIProperty:"],
-        "lineConv": "itemUnnamed",
-        "prefixLine": "@type",
-        "maxLines": 1, # forced end of block
-        "maxKeywords": 1  ## TODO: 
-            ## A property can be a function with parameters 
-            ##      documented in other lines within the block, 
-            ##      this means stop working line by line to analyze 
-            ##      the whole block together. uff!
-            ##      See APIProperty:onStart on Control/DragFeature.js
-            # On the other hand it is very rare case and there is few
-            #   additional informations that can provide to the compiler.
-    },
     "params": {
         "keywords": ["Parameters: *$", "Parameter: *$"],
-        "lineConv": "itemNamed",
-        "prefixLine": "@param"
+        "lines": {
+            "prefixLine": "@param",
+            "lineConv": "itemNamed",
+            "minLines": 1
+        },
+        "chks": ["prevBlank", "requiresHeader"]
     },
-    "optionalParams": { # New block: To debate
+    "params-optional": { # New block: To debate
         "keywords": ["Optional Parameters: *$", "Optional Parameter: *$"],
-        "lineConv": "itemOptionalNamed",
-        "prefixLine": "@param"
+        "lines": {
+            "prefixLine": "@param",
+            "lineConv": "itemOptionalNamed"
+        },
+        "chks": ["prevBlank", "requiresHeader"]
     },
-    "optionsParam": { # Any "options" argument is forced to set optional.
-        "keywords": ["options - {Object}"],
-        "prefixKeyword": "@param {Object=} options",
-        "lineConv" : "itemOptionalNamed", # Causes compiler warnings that allows 
-        "prefixLine": "@param"       #    better verification of documentation.
-                                     #    See below "optionsProperties"
-    },
-    "optionsProperties": { # The properties of the "options" are not translated into jsDoc
-                           #    It is necessary to complete the set of parameters 
-                           #    for the compiler and also for the documentation 
-                           #    generated by Natural Docs.
-        "keywords": [
-            "Options: *$", 
-            "Allowed Options: *$", 
-            "Valid Options: *$", 
-            "Valid options include: *$",
-            "Supported options include: *$", 
-            "Acceptable options: *$", 
-            "Allowed config properties: *$", 
-            "Valid options properties: *$"]
-    },
-    "scope": { # New block: To debate
+    "context": {
         "keywords": ["Context: *$"],
-        "lineConv": "itemUnnamed",
-        "prefixLine": "@this"
+        "lines": {
+            "lineConv": "itemUnnamed",
+            "prefixLine": "@this",
+            "minLines": 1
+        },
+        "chks": ["prevBlank", "requiresHeader"]
     },
-    "return": {
+    "returns": {
         "keywords": ["Returns: *$", "Return: *$"],
-        "lineConv": "itemUnnamed",
-        "maxLines": 1, # forced end of block
-        "prefixLine": "@return"
+        "lines": {
+            "lineConv": "itemUnnamed",
+            "prefixLine": "@return",
+            "maxLines": 1, # forced end of block
+            "minLines": 1
+        },
+        "chks": ["prevBlank", "requiresHeader"]
     }
 }
 
@@ -110,6 +116,7 @@ typesOL = [
     ("int",          "number"), # Used in: Events.js
     ("Float",        "number"),
     ("String",       "string"),
+    ("Char",       "string"), # Used in: Filter/Comparison.js
     ("Boolean",      "boolean"),
     ("Function",     "function(...[*])"),
     # Composed types
@@ -118,27 +125,34 @@ typesOL = [
     (r"Array\<(.*)\>",   r"Array.<\1>"), # Used in: Renderer/Elements.js:26
     (r"\<(.*)>\((.*)\)", r"\1.<\2>")     # Used in Tween.js:24
 ]
+# type converter
+reTypeName =        re.compile(r"(Array\(|)\{(.+?)\}\)*(.*)$")
 
-# -----------------
-# Detect "Natural Docs" comments.
-# -----------------
-M_CODE = 0
-M_COM2_BLOC = 1
+# Detect "Natural Docs" annotations.
 reStarCom2Bloc =        re.compile(r"^ *\/\*\* *(?! )")
 reLineCom2 =            re.compile(r"^ *\* *(?! )")
 reEndComBloc =          re.compile(r"\*\/")
 reEndLine =             re.compile(r"\n")
 reProblematicEndLine =  re.compile(r"\\\n")
 
+# Generic block start
 reItemsBlockStart = re.compile(r".+\: *$")
-reItemNamed =       re.compile(r"(\w+) - (.+)$")
+
+# Items converters
+reItemNamed =       re.compile(r"(\w+|\[\*\]) +- +(.+)$")
 reItemUnnamed =     re.compile(r"(- |)(.+)$")
 reItemSuperClass =  re.compile(r"- \<([\.\w]+)\> *$")
-reTypeName =        re.compile(r"(Array\(|)\{(.+?)\}\)*(.*)$")
+
+# Constants
+# ---------
+M_CODE = 0
+M_COM2_BLOC = 1
 
 def cnvJsDoc (inputFilename, outputFilename):
     print "Translating into jsDoc, input: %s output: %s " % (inputFilename, outputFilename),
 
+
+    
     if not os.path.isfile(inputFilename):
         print "\nProcess aborted due to errors."
         sys.exit('ERROR: Input file "%s" does not exist!' % inputFilename)
@@ -155,8 +169,10 @@ def cnvJsDoc (inputFilename, outputFilename):
     fIn = open(inputFilename)
     
     mode = M_CODE
+    isBlankLine = True
+    isStartLine = False
     previousProblematicEndLine = False
-    nat = Com2()
+    annotations = NaturalAnnotations(inputFilename)
     lineNumber = 0
     for line in fIn:
         lineNumber += 1
@@ -167,7 +183,7 @@ def cnvJsDoc (inputFilename, outputFilename):
             if oo: 
                 startCom2 = oo.end()
                 mode = M_COM2_BLOC
-                nat.clearBlock()
+                isStartLine = True
                 
         # Com2 line?
         if mode == M_COM2_BLOC:
@@ -176,20 +192,25 @@ def cnvJsDoc (inputFilename, outputFilename):
             if oo: 
                 endCom2 = oo.start()
                 mode = M_CODE
-
             if startCom2 == -1:
                 oo = reLineCom2.search(line)
                 if oo: 
                     startCom2 = oo.end()
-
             if endCom2 == -1:
                 endCom2 = reEndLine.search(line).start()
 
             if startCom2 >= 0 and startCom2 < endCom2:
-                # Com2 line? Yeah!
                 line = ( line[:startCom2] + 
-                         nat.toJsDoc(line[startCom2:endCom2]) + 
+                         annotations.toJsDoc(
+                            line[startCom2:endCom2], 
+                            lineNumber, 
+                            isBlankLine, 
+                            isStartLine) + 
                          line[endCom2:] )
+                isBlankLine = False
+                isStartLine = False
+            else:
+                isBlankLine = True
         fOut.write(line)
         if mode == M_CODE: 
             if reProblematicEndLine.search(line):
@@ -197,7 +218,11 @@ def cnvJsDoc (inputFilename, outputFilename):
             else:
                 previousProblematicEndLine = False
                 
-    print "   Done!"
+    annotations.endsHeaderBlock() # Force to run checks
+    if annotations.warnings == 0:
+        print "   Done!"
+    else:
+        print "Done with %s warnings." % annotations.warnings
     fIn.close()
     fOut.close()
     return outputFilename
@@ -205,71 +230,175 @@ def cnvJsDoc (inputFilename, outputFilename):
 # -----------------
 # Analyze comment blocks
 # -----------------    
-class Com2:
-    def __init__(self):
+class NaturalAnnotations:
+    def __init__(self, inputFilename):
+        self.inputFilename = inputFilename
+        logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+        self.warnings = 0
+        self.clearHeaderBlock()
         self.clearBlock()
 
-    def clearBlock(self):
-        self.maxKeywords = sys.maxint
-        self.processedKeywords = 0
-        self.blockActive = True
-        self.clearKeyword()
+    def warning(self, text):
+        if self.warnings == 0:
+            print
+        logging.warning(
+            "%s:%s: WARNING - " % (self.inputFilename, self.srcLineNumber) +
+            text +
+            "\n    Keyword: \"%s\"\n" % self.srcSource)
+        self.warnings += 1    
+    def headerWarning(self, text):
+        if self.warnings == 0:
+            print
+        logging.warning(
+            "%s:%s: WARNING - " % (self.inputFilename, self.headerSrcLineNumber) +
+            text +
+            "\n    Keyword: \"%s\"\n" % self.headerSrcSource)
+        self.warnings += 1
+    
+    def clearHeaderBlock(self):
+        self.blocks = []
+        self.ignores = []
+        self.requires = []
+        self.headerBlockName = None
 
-    def clearKeyword(self):
+        # Process variables
+        self.headerSrcLineNumber = 0
+        self.headerSrcSource = ""
+        self.processedBlocks = []
+
+    def endsHeaderBlock(self):
+        for r in self.requires:
+            if not r in self.processedBlocks:
+                self.headerWarning( 
+                    "Required block \"%s\" missing in header block \"%s\"" % 
+                    (r, self.headerBlockName)
+                )
+        self.endsBlock()
+        self.clearHeaderBlock()
+        
+    def clearBlock(self):
         self.maxLines = sys.maxint
+        self.minLines = 0
+        self.prefixLine = ""
+        self.lineConv = None
+        
+        # Process variables
+        self.srcLineNumber = 0
+        self.srcSource = ""
         self.processedLines = 0
         self.currentModeBlock = None
         self.blockName = None
+        
+    def endsBlock(self):
+        if self.processedLines < self.minLines:
+            self.warning("Required %s line(s)." % self.minLines)
+        self.clearBlock()
+    
 
-    def toJsDoc(self, line):
-        if self.blockActive == False:
-            return line
+    def toJsDoc(self, line, lineNumber, prevBlankLine, isStartLine):
+        if isStartLine:
+            self.endsHeaderBlock()
+
+        # Is a new block
         for k, v in syntax.iteritems():
             for j in v["keywords"]:
                 if re.match(j, line, flags=re.IGNORECASE):
-                    # Close the previous keyword
-                    if self.maxKeywords <= self.processedKeywords:
-                        self.blockActive = False
-                        return line
-                    self.clearKeyword()
+                    self.endsBlock()
                     
-                    # Start keyword
+                    # Load block converter
+                    # ---------------
+                    # Start block
+                    self.srcLineNumber = lineNumber
+                    self.srcSource = line
                     self.blockName = k
                     self.currentModeBlock = v
-                    
-                    if "keywordLineCnv" in self.currentModeBlock:
-                        conv = self.currentModeBlock["keywordLineCnv"]
+                    # Is header block
+                    if isStartLine:
+                        self.headerSrcLineNumber = lineNumber
+                        self.headerSrcSource = line
+                        self.headerBlockName = k
+                        if v.get("blocks"):
+                            self.blocks = v.get("blocks")
+                        if v.get("ignores"):
+                            self.ignores = v.get("ignores")
+                        if v.get("requires"):
+                            self.requires = v.get("requires")
+                    # Is not header block
+                    elif self.headerBlockName:
+                        if not self.blockName in self.blocks : 
+                            if not self.blockName in self.ignores:
+                                self.warning(
+                                    "\"%s\" not alowed in header block \"%s\"." % 
+                                    (self.blockName, self.headerBlockName)
+                                )
+                            self.clearBlock() # Block is ignored
+                            break
+
+                    # Warnings
+                    if "chks" in self.currentModeBlock:
+                        chks = self.currentModeBlock.get("chks")
+                        for chk in chks:
+                            if chk == "prevBlank" and prevBlankLine == False:
+                                self.warning("No previus blank line.")
+                            if chk == "isStartLine" and isStartLine == False:
+                                self.warning("Is not start line.")
+                            if chk == "requiresHeader" and not  self.headerBlockName:
+                                # Block not alowed without header block
+                                self.warning( 
+                                    "Block \"%s\" not alowed without header block." % 
+                                    self.blockName
+                                )
+                                self.clearBlock() # Block is ignored
+                                break
+                        if not self.currentModeBlock:
+                            # Block is ignored
+                            break
+
+                    # Load line converter
+                    # -------------------
+                    if v.get("lines"):
+                        lines = v.get("lines")
+                        if lines.get("prefixLine"):
+                            self.prefixLine = lines.get("prefixLine")
+                        if lines.get("lineConv"):
+                            self.lineConv = lines.get("lineConv")
+                        if lines.get("maxLines"):
+                            self.maxLines = lines.get("maxLines")
+                        if lines.get("minLines"):
+                            self.minLines = lines.get("minLines")
+
+                    # Convert the block
+                    # -----------------
+                    self.processedBlocks.append(self.blockName)
+                    if "blockConv" in self.currentModeBlock:
+                        conv = self.currentModeBlock["blockConv"]
                         if conv == "cnvKeywordJsDoc":
                             line = self.cnvKeywordJsDoc(line)
-                        # cnvKeywordType
-                    if v.get("maxLines"):
-                        self.maxLines = v.get("maxLines")
-                    if v.get("maxKeywords"):
-                        self.maxKeywords = v.get("maxKeywords")
-                    if "prefixKeyword" in self.currentModeBlock:
-                        line = self.currentModeBlock["prefixKeyword"] + " " + line
-                    self.processedKeywords += 1
+                    if "prefixBlockKeyword" in self.currentModeBlock:
+                        line = self.currentModeBlock["prefixBlockKeyword"] + " " + line
                     break
             else:
                 continue
             break
+        # The block will continue
         else:
-            if self.currentModeBlock and self.currentModeBlock.get("lineConv"):
-                if reItemsBlockStart.search(line):
-                    self.clearKeyword() # forced end of previus block
-                else:
-                    conv = self.currentModeBlock.get("lineConv")
-                    if conv == "itemNamed":
-                        line = self.cnvItemNamed(line, "", "")
-                    elif conv == "itemOptionalNamed":
-                        line = self.cnvItemNamed(line, "", "|null|undefined=")
-                    elif conv == "itemUnnamed":
-                        line = self.cnvItemUnnamed(line)
-                    elif conv == "itemSuperClass":
-                        line = self.cnvItemSuperClass(line)
+            # New block to not parse
+            if reItemsBlockStart.search(line) and prevBlankLine:
+                self.endsBlock() # forced end of previus block
+            # Is a line into a block
+            elif self.currentModeBlock and self.lineConv:
+                conv = self.lineConv
+                if conv == "itemNamed":
+                    line = self.cnvItemNamed(line, False)
+                elif conv == "itemOptionalNamed":
+                    line = self.cnvItemNamed(line, True)
+                elif conv == "itemUnnamed":
+                    line = self.cnvItemUnnamed(line)
+                elif conv == "itemSuperClass":
+                    line = self.cnvItemSuperClass(line)
 
-                    if self.maxLines <= self.processedLines:
-                        self.clearKeyword() # forced end of block
+                if self.maxLines <= self.processedLines:
+                    self.endsBlock()  # forced end of block
         return line
 
     # Keyword line converters
@@ -291,10 +420,10 @@ class Com2:
         oo = reItemSuperClass.search(subLine)
         if oo == None:
             return subLine
-        return (self.currentModeBlock.get("prefixLine") +
-                " {" + oo.group(1) + "}")
+        self.processedLines += 1
+        return (self.prefixLine + " {" + oo.group(1) + "}")
 
-    def cnvItemNamed(self, subLine, start, end):
+    def cnvItemNamed(self, subLine, isOptional):
         oo = reItemNamed.search(subLine.replace("} or {","|"))
         if oo == None:
             return subLine
@@ -302,22 +431,39 @@ class Com2:
         if decl == None:
             return subLine
 
-        self.processedLines += 1
-        return (self.currentModeBlock.get("prefixLine") +
-                " {" + start + decl["typeName"] + end + "} " +
-                oo.group(1) + " " + 
+        paramName = oo.group(1)
+        if paramName == "[*]":
+            paramName = "dummyParam"
+        self.processedLines += 1 # must be increased before parse the line, 
+                                 # since parsing may end the block.
+        if isOptional:
+            result = (self.prefixLine +
+                " {" + decl["typeName"] + "|null|undefined=} " +
+                paramName + " " + 
                 decl["remainder"])
+        else:
+             
+            if decl["typeName"] == "Object" and paramName == "options":
+                result = (self.prefixLine +
+                    " {Object=} options " + 
+                    decl["remainder"])
+                self.endsBlock() # forced end of block
+            else:
+                result = (self.prefixLine +
+                        " {" + decl["typeName"] + "} " +
+                        paramName + " " + 
+                        decl["remainder"])
+        return result
 
     def cnvItemUnnamed(self, subLine):
-        oo = reItemUnnamed.search(subLine)
-        if oo == None:
+        if reItemUnnamed.search(subLine) == None:
             return subLine
-        decl = self.cnvTypeDeclaration(subLine)
+        decl = self.cnvTypeDeclaration(subLine.replace("} or {","|"))
         if decl == None:
             return subLine
 
         self.processedLines += 1
-        return (self.currentModeBlock.get("prefixLine") + 
+        return (self.prefixLine + 
                 " {" + decl["typeName"] + "} " + 
                 decl["remainder"])
 
@@ -342,7 +488,6 @@ class Com2:
         return repetitiveParameter + self.cnvTypeName(typeList)
 
     def cnvTypeName(self, typeName):
-        # print "ini:", typeName
         if typeName == "":
             return "*" # Any type from declaration as {}
 
