@@ -38,7 +38,11 @@ syntax ={
     },
     "constant": {
         "keywords": ["Constant:"],
-        "prefixBlockKeyword": "@const",
+        "lines": {
+            "lineConv": "itemUnnamed",
+            "prefixLine": "@const",
+            "maxLines": 1, # forced end of block
+        },
         "chks": ["isStartLine"]
     },
     "property": {
