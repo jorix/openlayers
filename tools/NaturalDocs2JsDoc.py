@@ -147,6 +147,9 @@ reItemNamed =       re.compile(r"(\w+|\[\*\]) +- +(.+)$")
 reItemUnnamed =     re.compile(r"(- |)(.+)$")
 reItemSuperClass =  re.compile(r"- \<([\.\w]+)\> *$")
 
+# Missing parameters
+reMisingParameters = re.compile(r"^ *(\w+\.*)\ *(=|:) *function\(()\)(.*)$")
+
 # Constants
 # ---------
 M_CODE = 0
@@ -155,8 +158,6 @@ M_COM2_BLOC = 1
 def cnvJsDoc (inputFilename, outputFilename):
     print "Translating into jsDoc, input: %s output: %s " % (inputFilename, outputFilename),
 
-
-    
     if not os.path.isfile(inputFilename):
         print "\nProcess aborted due to errors."
         sys.exit('ERROR: Input file "%s" does not exist!' % inputFilename)
@@ -174,7 +175,8 @@ def cnvJsDoc (inputFilename, outputFilename):
     
     mode = M_CODE
     isBlankLine = True
-    isStartLine = False
+    isCom2StartLine = False
+    isCodeStartLine = True
     previousProblematicEndLine = False
     annotations = NaturalAnnotations(inputFilename)
     lineNumber = 0
@@ -187,7 +189,7 @@ def cnvJsDoc (inputFilename, outputFilename):
             if oo: 
                 startCom2 = oo.end()
                 mode = M_COM2_BLOC
-                isStartLine = True
+                isCom2StartLine = True
                 
         # Com2 line?
         if mode == M_COM2_BLOC:
@@ -196,6 +198,7 @@ def cnvJsDoc (inputFilename, outputFilename):
             if oo: 
                 endCom2 = oo.start()
                 mode = M_CODE
+                isCodeStartLine = True
             if startCom2 == -1:
                 oo = reLineCom2.search(line)
                 if oo: 
@@ -209,18 +212,29 @@ def cnvJsDoc (inputFilename, outputFilename):
                             line[startCom2:endCom2], 
                             lineNumber, 
                             isBlankLine, 
-                            isStartLine) + 
+                            isCom2StartLine) + 
                          line[endCom2:] )
                 isBlankLine = False
-                isStartLine = False
+                isCom2StartLine = False
             else:
                 isBlankLine = True
-        fOut.write(line)
         if mode == M_CODE: 
+            if endCom2 == -1:
+                if isCodeStartLine == True and len(annotations.headerBlockparams) > 0:
+                    oo = reMisingParameters.search(line)
+                    if oo:
+                        line = re.sub(
+                            reMisingParameters, 
+                            r" \1 \2 function(" + 
+                                ",".join(annotations.headerBlockparams) +
+                                r")\4", 
+                            line)
+                isCodeStartLine = False
             if reProblematicEndLine.search(line):
                 previousProblematicEndLine = True
             else:
                 previousProblematicEndLine = False
+        fOut.write(line)
                 
     annotations.endsHeaderBlock() # Force to run checks
     if annotations.warnings == 0:
@@ -263,6 +277,7 @@ class NaturalAnnotations:
         self.blocks = []
         self.ignores = []
         self.requires = []
+        self.headerBlockparams = []
         self.headerBlockName = None
 
         # Process variables
@@ -434,19 +449,20 @@ class NaturalAnnotations:
         decl = self.cnvTypeDeclaration(oo.group(2))
         if decl == None:
             return subLine
-
+        
         paramName = oo.group(1)
         if paramName == "[*]":
             paramName = "dummyParam"
         self.processedLines += 1 # must be increased before parse the line, 
                                  # since parsing may end the block.
+        if self.prefixLine == "@param":
+            self.headerBlockparams.append(paramName)
         if isOptional:
             result = (self.prefixLine +
                 " {" + decl["typeName"] + "|null|undefined=} " +
                 paramName + " " + 
                 decl["remainder"])
         else:
-             
             if decl["typeName"] == "Object" and paramName == "options":
                 result = (self.prefixLine +
                     " {Object=} options " + 
