@@ -74,3 +74,6 @@ Element.prototype.documentElement;
  * Userd in: OpenLayers.Lang.setCode
  */
 Navigator.prototype.userLanguage;
+/** Used in: OpenLayers.Animation */
+var oRequestAnimationFrame = function(){};
+var msRequestAnimationFrame = function(){};
