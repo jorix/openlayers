@@ -145,10 +145,10 @@ reItemsBlockStart = re.compile(r".+\: *$")
 # Items converters
 reItemNamed =       re.compile(r"(\w+|\[\*\]) +- +(.+)$")
 reItemUnnamed =     re.compile(r"(- |)(.+)$")
-reItemSuperClass =  re.compile(r"- \<([\.\w]+)\> *$")
+reItemSuperClass =  re.compile(r"- \<(\w[\.\w]+\w)\> *$")
 
 # Missing parameters
-reMisingParameters = re.compile(r"^ *(\w+\.*)\ *(=|:) *function\(()\)(.*)$")
+reMisingParameters = re.compile(r"^ *(\w[\.\w]+\w *=|\"\w+\"? *:|'\w+' *:|\w+ *:) *function\(()\)(.*)$")
 
 # Constants
 # ---------
@@ -225,9 +225,9 @@ def cnvJsDoc (inputFilename, outputFilename):
                     if oo:
                         line = re.sub(
                             reMisingParameters, 
-                            r" \1 \2 function(" + 
+                            r" \1 function(" + 
                                 ",".join(annotations.headerBlockparams) +
-                                r")\4", 
+                                r")\3", 
                             line)
                 isCodeStartLine = False
             if reProblematicEndLine.search(line):
