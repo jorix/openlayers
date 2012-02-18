@@ -122,8 +122,8 @@ def build(config_file = None, output_file = None, options = None):
             sourceFilesTmp = []
             for fIn in sourceFiles:
                 fOut = os.path.normpath(os.path.join(preProcessDirectory, fIn.replace("../",""))).replace("\\","/")
-                NaturalDocs2JsDoc.cnvJsDoc(fIn, fAux)
-                sourceFilesTmp.append(Class2Js.cnvJs(fAux, fOut))
+                Class2Js.cnvJs(fIn, fAux)
+                sourceFilesTmp.append(NaturalDocs2JsDoc.cnvJsDoc(fAux, fOut))
             os.remove(fAux)
             minimized = closureCompiler.Compile(
                 jscompilerJar, 

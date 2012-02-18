@@ -120,7 +120,7 @@ typesOL = [
     ("int",          "number"), # Used in: Events.js
     ("Float",        "number"),
     ("String",       "string"),
-    ("Char",       "string"), # Used in: Filter/Comparison.js
+    ("Char",         "string"), # Used in: Filter/Comparison.js
     ("Boolean",      "boolean"),
     ("Function",     "function(...[*])"),
     # Composed types
@@ -129,6 +129,15 @@ typesOL = [
     (r"Array\<(.*)\>",   r"Array.<\1>"), # Used in: Renderer/Elements.js:26
     (r"\<(.*)>\((.*)\)", r"\1.<\2>")     # Used in Tween.js:24
 ]
+
+# Parameter quantifiers
+paramQuantifiers = [
+    # As: match, wrapper-of-the-type, force-end-of-parameters
+    (re.compile(r"^ *\?.*"),    r"\1=",     False), 
+    (re.compile(r"^ *\*.*"),    r"...\1",   True),
+    (re.compile(r"^ *\+.*"),    r"...\1",   True),
+]
+
 # type converter
 reTypeName =        re.compile(r"(Array\(|)\{(.+?)\}\)*(.*)$")
 
@@ -178,8 +187,9 @@ def cnvJsDoc (inputFilename, outputFilename):
     isCom2StartLine = False
     isCodeStartLine = True
     previousProblematicEndLine = False
-    annotations = NaturalAnnotations(inputFilename)
+    annotations = NaturalAnnotations(outputFilename)
     lineNumber = 0
+    lines = []
     for line in fIn:
         lineNumber += 1
         startCom2 = -1
@@ -220,23 +230,37 @@ def cnvJsDoc (inputFilename, outputFilename):
                 isBlankLine = True
         if mode == M_CODE: 
             if endCom2 == -1:
-                if isCodeStartLine == True and len(annotations.headerBlockparams) > 0:
-                    oo = reMisingParameters.search(line)
-                    if oo:
-                        line = re.sub(
-                            reMisingParameters, 
-                            r" \1 function(" + 
-                                ",".join(annotations.headerBlockparams) +
-                                r")\3", 
-                            line)
+                # ATTENTION: At this point alters the executable code to add the 
+                #   parameters identified in the annotations when the functions 
+                #   are declared without them.
+                if isCodeStartLine == True:
+                    if annotations.jsIsContrunctor:
+                        # Save where the beginning of the class.
+                        annotations.jsContrunctorLineNumber = lineNumber
+                    elif annotations.jsIsInitialize:
+                        # Change beginning of the class.
+                        if annotations.jsContrunctorLineNumber:
+                            aux = annotations.jsContrunctorLineNumber-1
+                            lines[aux] = annotations.putLostParameters(lines[aux]) 
+                            annotations.jsContrunctorLineNumber = 0
+                    # Function arguments missing.
+                    if len(annotations.headerBlockparams) > 0:
+                        # Change function
+                        line = annotations.putLostParameters(line)
+                # Clean the state as start executable code line.
                 isCodeStartLine = False
             if reProblematicEndLine.search(line):
                 previousProblematicEndLine = True
             else:
                 previousProblematicEndLine = False
-        fOut.write(line)
+        lines.append(line)
                 
     annotations.endsHeaderBlock() # Force to run checks
+
+    # Write output file
+    for line in lines:
+        fOut.write(line)
+
     if annotations.warnings == 0:
         print "   Done!"
     else:
@@ -249,10 +273,11 @@ def cnvJsDoc (inputFilename, outputFilename):
 # Analyze comment blocks
 # -----------------    
 class NaturalAnnotations:
-    def __init__(self, inputFilename):
-        self.inputFilename = inputFilename
+    def __init__(self, filename):
+        self.filename = filename
         logging.basicConfig(format='%(message)s', level=logging.DEBUG)
         self.warnings = 0
+        self.jsContrunctorLineNumber = 0
         self.clearHeaderBlock()
         self.clearBlock()
 
@@ -260,7 +285,7 @@ class NaturalAnnotations:
         if self.warnings == 0:
             print
         logging.warning(
-            "%s:%s: WARNING - " % (self.inputFilename, self.srcLineNumber) +
+            "%s:%s: WARNING - " % (self.filename, self.srcLineNumber) +
             text +
             "\n    Keyword: \"%s\"\n" % self.srcSource)
         self.warnings += 1    
@@ -268,7 +293,7 @@ class NaturalAnnotations:
         if self.warnings == 0:
             print
         logging.warning(
-            "%s:%s: WARNING - " % (self.inputFilename, self.headerSrcLineNumber) +
+            "%s:%s: WARNING - " % (self.filename, self.headerSrcLineNumber) +
             text +
             "\n    Keyword: \"%s\"\n" % self.headerSrcSource)
         self.warnings += 1
@@ -279,11 +304,27 @@ class NaturalAnnotations:
         self.requires = []
         self.headerBlockparams = []
         self.headerBlockName = None
+        self.jsIsContrunctor = False
+        self.jsIsInitialize = False
 
         # Process variables
         self.headerSrcLineNumber = 0
         self.headerSrcSource = ""
         self.processedBlocks = []
+
+    def putLostParameters(self, line):
+        oo = reMisingParameters.search(line)
+        if oo:
+            listParams = []
+            for varType, varName in self.headerBlockparams:
+                listParams += ["/**" + varType + "*/ " + varName]
+            line = re.sub(
+                reMisingParameters, 
+                r" \1 function(" + 
+                    ",".join(listParams) +
+                    r")\3", 
+                line)
+        return line
 
     def endsHeaderBlock(self):
         for r in self.requires:
@@ -336,6 +377,12 @@ class NaturalAnnotations:
                         self.headerSrcLineNumber = lineNumber
                         self.headerSrcSource = line
                         self.headerBlockName = k
+                        
+                        if self.headerBlockName == "@constructor":
+                            self.jsIsContrunctor = True;
+                        elif self.headerBlockName == "initialize":
+                            self.jsIsInitialize = True;
+
                         if v.get("blocks"):
                             self.blocks = v.get("blocks")
                         if v.get("ignores"):
@@ -455,25 +502,31 @@ class NaturalAnnotations:
             paramName = "dummyParam"
         self.processedLines += 1 # must be increased before parse the line, 
                                  # since parsing may end the block.
-        if self.prefixLine == "@param":
-            self.headerBlockparams.append(paramName)
+        prefixLine = self.prefixLine
         if isOptional:
-            result = (self.prefixLine +
-                " {" + decl["typeName"] + "|null|undefined=} " +
-                paramName + " " + 
-                decl["remainder"])
+            typeDef = decl["typeName"] + "=" 
         else:
             if decl["typeName"] == "Object" and paramName == "options":
-                result = (self.prefixLine +
-                    " {Object=} options " + 
-                    decl["remainder"])
+                typeDef = "Object="
                 self.endsBlock() # forced end of block
             else:
-                result = (self.prefixLine +
-                        " {" + decl["typeName"] + "} " +
-                        paramName + " " + 
-                        decl["remainder"])
-        return result
+                typeDef = decl["typeName"]
+                
+        # Parameter quantifiers
+        for match, wrap, forceEnd in paramQuantifiers:
+            print decl["remainder"]
+            oo = match.search(decl["remainder"])
+            if oo:
+                print "ok"
+                typeDef = wrap.replace(r"\1",typeDef)
+                if forceEnd:
+                    self.endsBlock() # forced end of block
+                break
+        
+        if prefixLine == "@param":
+            self.headerBlockparams.append((typeDef, paramName))
+        typeDef = "{" + typeDef + "}"
+        return " ".join([prefixLine, typeDef, paramName, decl["remainder"]])
 
     def cnvItemUnnamed(self, subLine):
         if reItemUnnamed.search(subLine) == None:
