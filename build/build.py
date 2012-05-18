@@ -111,13 +111,13 @@ def build(config_file = None, output_file = None, options = None):
         elif use_compressor == "closure_verify":
             print "\nPre-compilation process..."
             preProcessDirectory = "../build/temp"
-            try:
-                shutil.rmtree(preProcessDirectory, False)
-                os.makedirs(preProcessDirectory)
-            except Exception, E:
-                print "\nAbnormal termination: Unable to clear working folder \"%s\"," % preProcessDirectory
-                print "                      check if there is a process that blocks the folder."
-                sys.exit("ERROR: %s" % E) 
+            if os.path.isdir(preProcessDirectory):
+                try:
+                    shutil.rmtree(preProcessDirectory, False)
+                except Exception, E:
+                    print "\nAbnormal termination: Unable to clear or create working folder \"%s\"," % preProcessDirectory
+                    print "                      check if there is a process that blocks the folder."
+                    sys.exit("ERROR: %s" % E) 
             fAux = preProcessDirectory + "/temp.js"
             sourceFilesTmp = []
             for fIn in sourceFiles:
@@ -128,7 +128,43 @@ def build(config_file = None, output_file = None, options = None):
             minimized = closureCompiler.Compile(
                 jscompilerJar, 
                 sourceFilesTmp, [
+                ## JS custom externs (closure-compiler/src/com/google/javascript/jscompCommandLineRunner.java)
+                    "--use_only_custom_externs",
+                # ECMAScript3 compatible IE8 or < 
+                    "--externs", "closure-compiler/JS-minimum/OL-es3.js",
+                # Event APIs
+                    "--externs", "closure-compiler/JS-minimum/w3c_event.js",
+                    "--externs", "closure-compiler/JS-minimum/ie_event.js",
+                # DOM apis
+                    "--externs", "closure-compiler/JS-minimum/w3c_dom1.js",
+                    "--externs", "closure-compiler/JS-minimum/w3c_dom2.js",
+                    "--externs", "closure-compiler/JS-minimum/gecko_dom.js",
+                    "--externs", "closure-compiler/JS-minimum/ie_dom.js",
+                # CSS apis
+                    "--externs", "closure-compiler/JS-minimum/w3c_css.js",
+                # Top-level namespaces
+                    "--externs", "closure-compiler/JS-minimum/gecko_xml.js",
+                    "--externs", "closure-compiler/JS-minimum/html5.js",
+                    "--externs", "closure-compiler/JS-minimum/google.js",
+                    "--externs", "closure-compiler/JS-minimum/w3c_range.js",
+                    "--externs", "closure-compiler/JS-minimum/w3c_xml.js",
+                    "--externs", "closure-compiler/JS-minimum/window.js",
+                # Renderer/SVG.js: setAttributeNS 
+                # Format/XM.js & WPSExecute.js: DOMImplementation.prototype.createDocument
+                    "--externs", "closure-compiler/JS-minimum/w3c_dom3.js",
+                # Events.js: evt.touches
+                    "--externs", "closure-compiler/JS-minimum/iphone.js",
+                # Control/Geolocate.js:  navigator.geolocation
+                    "--externs", "closure-compiler/JS-minimum/w3c_geolocation.js",
+                # Control/CacheWrite.js: localStorage (requires html5.js)
+                    "--externs", "closure-compiler/JS-minimum/webstorage.js",
+                # Animation.js: RequestAnimationFrame
+                    "--externs", "closure-compiler/JS-minimum/w3c_anim_timing.js",
+                # Others
+                    "--externs", "closure-compiler/JS-minimum/OL-others.js",
+                # OL externs
                     "--externs", "closure-compiler/Externs.js",
+                ## Errors & Warnins
                     "--jscomp_error", "deprecated",
                     "--jscomp_off",     "checkTypes",
                     "--jscomp_warning", "missingProperties",

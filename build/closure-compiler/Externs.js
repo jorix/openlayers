@@ -33,7 +33,9 @@
 // Google Maps
     var GMap2;
     var G_NORMAL_MAP;
-    var GEvent;
+    var GEvent = {};
+    GEvent.addListener = function(a, b, c){};
+    GEvent.removeListener = function(h){};
     var GLatLngBounds = function(){};
     var GSize = function(x, y){};
     var GPoint = function(x, y){};
@@ -74,6 +76,3 @@ Element.prototype.documentElement;
  * Userd in: OpenLayers.Lang.setCode
  */
 Navigator.prototype.userLanguage;
-/** Used in: OpenLayers.Animation */
-var oRequestAnimationFrame = function(){};
-var msRequestAnimationFrame = function(){};
