@@ -20,6 +20,32 @@
 
         <script src="../lib/OpenLayers.js"></script>
         <script type="text/javascript">
+
+            OpenLayers.Control.LayerSwitcher.prototype.getSelectControl = function (layerName) { 
+                var select = document.createElement('select'); 
+                select.id = 'select' + layerName; 
+                select.name = 'select' + layerName; 
+                select.className = 'layerSwitcherCombo'; 
+
+                var normal = document.createElement('option'); 
+                normal.value = 'normal'; 
+                normal.appendChild(document.createTextNode('Normal Icons')); 
+
+                var large = document.createElement('option'); 
+                large.value = 'large'; 
+                large.appendChild(document.createTextNode('Large Icons')); 
+
+                var larger = document.createElement('option'); 
+                larger.value = 'larger'; 
+                larger.appendChild(document.createTextNode('Larger Icons')); 
+
+                select.appendChild(normal); 
+                select.appendChild(large); 
+                select.appendChild(larger); 
+
+                return select; 
+            };
+        
             var map;
             function init(){
                 map = new OpenLayers.Map('map', {
