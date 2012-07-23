@@ -15,7 +15,6 @@
             list-style: none;
         }
     </style>
-    <script src="../lib/Firebug/firebug.js"></script>
     <script src="../lib/OpenLayers.js"></script>
     <script type="text/javascript">
 
@@ -44,7 +43,7 @@
             vectors.addFeatures([feature2]);
 
             var report = function(e) {
-                OpenLayers.Console.log(e.type, e.feature.id);
+                console && console.log(e.type, e.feature.id);
             };
             
             var highlightCtrl = new OpenLayers.Control.SelectFeature(vectors, {
