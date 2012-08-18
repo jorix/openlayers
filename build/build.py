@@ -18,6 +18,10 @@ def build(config_file = None, output_file = None, options = None):
         #       http://code.google.com/p/closure-library/source/browse/trunk/closure/bin/build/jscompiler.py
         import closure_library_jscompiler as closureCompiler
         have_compressor.append("closure")
+        import NaturalDocs2JsDoc
+        import Class2Js
+        import shutil
+        have_compressor.append("closure_verify")
     except Exception, E:
         print "No closure (%s)" % E
     try:
@@ -52,7 +56,7 @@ def build(config_file = None, output_file = None, options = None):
 
     print "Merging libraries."
     try:
-        if use_compressor == "closure":
+        if use_compressor == "closure" or use_compressor == "closure_verify":
             sourceFiles = mergejs.getNames(sourceDirectory, configFilename)
         else:
             merged = mergejs.run(sourceDirectory, None, configFilename)
@@ -89,20 +93,44 @@ def build(config_file = None, output_file = None, options = None):
             sys.exit("ERROR: Closure Compilation using Web service failed!")
         else:
             print "Closure Compilation using Web service has completed successfully."
-    elif use_compressor == "closure":
+    elif use_compressor == "closure" or use_compressor == "closure_verify":
         jscompilerJar = "../tools/closure-compiler.jar"
         if not os.path.isfile(jscompilerJar):
             print "\nNo closure-compiler.jar; read README.txt!"
             sys.exit("ERROR: Closure Compiler \"%s\" does not exist! Read README.txt" % jscompilerJar)
-        minimized = closureCompiler.Compile(
-            jscompilerJar, 
-            sourceFiles, [
-                "--externs", "closure-compiler/Externs.js",
-                "--jscomp_warning", "checkVars",   # To enable "undefinedVars"
-                "--jscomp_error",   "checkRegExp", # Also necessary to enable "undefinedVars"
-                "--jscomp_error",   "undefinedVars"
-            ]
-        )
+        if use_compressor == "closure":
+            minimized = closureCompiler.Compile(
+                jscompilerJar, 
+                sourceFiles, [
+                    "--externs", "closure-compiler/Externs.js",
+                    "--jscomp_warning", "checkVars",   # To enable "undefinedVars"
+                    "--jscomp_error",   "checkRegExp", # Also necessary to enable "undefinedVars"
+                    "--jscomp_error",   "undefinedVars"
+                ]
+            )
+        elif use_compressor == "closure_verify":
+            print "\nPre-compilation process..."
+            sourceFilesTmp = []
+            preProcessDirectory = "../build/temp"
+            fAux = preProcessDirectory + "/temp.js"
+            shutil.rmtree(preProcessDirectory, True)
+            os.makedirs(preProcessDirectory)
+            for fIn in sourceFiles:
+                fOut = os.path.normpath(os.path.join(preProcessDirectory, fIn.replace("../",""))).replace("\\","/")
+                NaturalDocs2JsDoc.cnvJsDoc(fIn, fAux)
+                sourceFilesTmp.append(Class2Js.cnvJs(fAux, fOut))
+            minimized = closureCompiler.Compile(
+                jscompilerJar, 
+                sourceFilesTmp, [
+                    "--externs", "closure-compiler/Externs.js",
+                    "--jscomp_error", "deprecated",
+                    "--jscomp_off",     "checkTypes",
+                    "--jscomp_warning", "missingProperties",
+                    "--jscomp_warning", "checkVars",   # To enable "undefinedVars"
+                    "--jscomp_error",   "checkRegExp", # Also necessary to enable "undefinedVars"
+                    "--jscomp_error",   "undefinedVars"
+                ]
+            )
         if minimized is None:
             print "\nAbnormal termination due to compilation errors." 
             sys.exit("ERROR: Closure Compilation failed! See compilation errors.") 
@@ -128,7 +156,7 @@ def build(config_file = None, output_file = None, options = None):
 
 if __name__ == '__main__':
   opt = optparse.OptionParser(usage="%s [options] [config_file] [output_file]\n  Default config_file is 'full.cfg', Default output_file is 'OpenLayers.js'")
-  opt.add_option("-c", "--compressor", dest="compressor", help="compression method: one of 'jsmin' (default), 'minimize', 'closure_ws', 'closure', or 'none'", default="jsmin")
+  opt.add_option("-c", "--compressor", dest="compressor", help="compression method: one of 'jsmin' (default), 'minimize', 'closure_ws', 'closure', 'closure_verify' or 'none'", default="jsmin")
   opt.add_option("-s", "--status", dest="status", help="name of a file whose contents will be added as a comment at the front of the output file. For example, when building from a git repo, you can save the output of 'git describe --tags' in this file. Default is no file.", default=False)
   opt.add_option("--amd", dest="amd", help="output should be AMD module; wrap merged files in define function; can be either 'pre' (before compilation) or 'post' (after compilation). Wrapping the OpenLayers var in a function means the filesize can be reduced by the closure compiler using 'pre', but be aware that a few functions depend on the OpenLayers variable being present. Either option can be used with jsmin or minimize compression. Default false, not AMD.", default=False)
   opt.add_option("--amdname", dest="amdname", help="only useful with amd option. Name of AMD module. Default no name, anonymous module.", default=False)

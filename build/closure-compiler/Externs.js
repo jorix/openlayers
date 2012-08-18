@@ -17,7 +17,15 @@
     var console;
 
 // Proj4js
-    var Proj4js = {Proj: function(){}};
+    var Proj4js = {};
+    /** @constructor */ 
+    Proj4js.Proj = function(){}; 
+    /** @type {string} */
+    Proj4js.Proj.prototype.projName
+    /** @type {string} */
+    Proj4js.srsCode;
+    /** @type {string} */
+    Proj4js.defData;
 
 // Check JSON in lib/OpenLayers/Format/JSON.js
     var JSON = {};
@@ -47,4 +55,22 @@
     var YGeoPoint = function(lat, lon){};
     var YCoordPoint = function(x, y){};
     var YSize = function(w, h){};
+    
+/**
+ * @see http://msdn.microsoft.com/en-us/library/ms536411(VS.85).aspx
+ * Used in: OpenLayers.Event.stopObserving
+ */
+Element.prototype.detachEvent;
 
+/**
+ * @type {!Element}
+ * @see http://www.w3.org/TR/1998/REC-DOM-Level-1-19981001/level-one-core.html#attribute-documentElement
+ * Used in: OpenLayers.Format.XML subclasses
+ */
+Element.prototype.documentElement;
+
+/**
+ * @type {string}
+ * Userd in: OpenLayers.Lang.setCode
+ */
+Navigator.prototype.userLanguage;
